@@ -126,21 +126,13 @@ impl KeystoneAuthV2 {
                 match self.region {
                     Some(ref r) => {
                         for endpoint in endpoints_array {
-                            match find_err(&endpoint, "region") {
-                                Ok(_r) => {
-                                    let _found_region = as_string(&_r);
-                                    match _found_region {
-                                        Some(_fr) => {
-                                            if &_fr == r {
-                                                let _public_url = try!(find_err(&endpoint, "publicURL"));
-                                                let storage_url = as_string(&_public_url);
-                                                return Ok(storage_url)
-                                            }
-                                        },
-                                        None => ()
-                                    }
-                                },
-                                Err(_) => ()
+                            let _j = json::Json::from_str("\"\"").unwrap();
+                            let _r = find_err(&endpoint, "region").unwrap_or(&_j);
+                            let _fr = as_string(&_r).unwrap_or(String::from(""));
+                            if (&_fr == r) && (&_fr != "") {
+                                let _public_url = try!(find_err(&endpoint, "publicURL"));
+                                let storage_url = as_string(&_public_url);
+                                return Ok(storage_url)
                             }
                         }
                         return Err(format!("No region matching '{}' located", r))
@@ -155,7 +147,7 @@ impl KeystoneAuthV2 {
                     }
                 }
             },
-            None => Err(String::from("No Endpoints Found"))
+            None => return Err(String::from("No Endpoints Found"))
         }
     }
 
