@@ -3,28 +3,43 @@
 extern crate hyper;
 extern crate chrono;
 extern crate rustc_serialize;
+extern crate url;
 
 use self::hyper::Client;
 use self::hyper::header::{Headers, ContentType};
+use self::hyper::method::Method;
+use self::hyper::client::{IntoUrl, RequestBuilder};
 use chrono::{DateTime, Duration, UTC};
 use rustc_serialize::{Encodable, json};
 use std::io::Read;
 use std::option::Option;
 use std::result::Result;
+use std::sync::Mutex;
+use self::url::Url;
+
+/////////////////////////////////////
+// Enum for containing auth methods
+/////////////////////////////////////
+
+//pub enum Auth {
+//    KeystoneAuthV2
+//}
 
 ///////////////////////////////////////////////
 // Trait to be implemented by any auth object
 ///////////////////////////////////////////////
 
-pub trait Authenticate {
-    fn get_token(&mut self) -> Result<&String, String>;
+pub trait Auth {
+    fn build_request<'a>(&'a self, m: Method, path:&'a String)
+        -> Result<RequestBuilder<'a, Url>, String>;
 }
 
 /////////////////////////////////////////////////
 // Helper methods for manipulating JSON objects
 /////////////////////////////////////////////////
 
-fn post_json<T>(client: &Client, url: &str, payload: &T) -> Result<String, String> where T: Encodable {
+fn post_json<T>(client: &Client, url: &str, payload: &T)
+        -> Result<String, String> where T: Encodable {
     // POSTs an encodable payload to a given URL
     let body: String = match json::encode(payload) {
         Ok(s) => s,
@@ -91,31 +106,44 @@ struct AuthRequestV2<'s> {
     auth: AuthRequestAuthV2<'s>,
 }
 
+struct KeystoneAuthV2Token {
+    token: Option<String>,
+    storage_url: Option<String>,
+    expires: Option<DateTime<UTC>>
+}
+
+impl KeystoneAuthV2Token {
+    fn new () -> KeystoneAuthV2Token {
+        KeystoneAuthV2Token{
+            token: None,
+            storage_url: None,
+            expires: None
+        }
+    }
+}
+
 pub struct KeystoneAuthV2 {
     username: String,
     password: String,
     tenant: String,
     auth_url: String,
     region: Option<String>,
-    token: Option<String>,
-    storage_url: Option<String>,
-    expires: Option<DateTime<UTC>>,
-    client: Client
+    client: Client,
+    token: Mutex<KeystoneAuthV2Token>,
 }
 
 impl KeystoneAuthV2 {
     pub fn new (username: String, password: String, tenant: String,
                 auth_url: String, region: Option<String>) -> KeystoneAuthV2 {
         let client = Client::new();
+        let token = KeystoneAuthV2Token::new();
         KeystoneAuthV2 {
             username: username,
             password: password,
             tenant: tenant,
             auth_url: auth_url,
             region: region,
-            token: None,
-            storage_url: None,
-            expires: None,
+            token: Mutex::new(token),
             client: client
         }
     }
@@ -126,8 +154,10 @@ impl KeystoneAuthV2 {
                 match self.region {
                     Some(ref r) => {
                         'eps: for endpoint in endpoints_array {
-                            let _r = if let Ok(x) = find_err(&endpoint, "region") {x} else {continue 'eps};
-                            let _fr = if let Some(x) = as_string(&_r) {x} else {continue 'eps};
+                            let _r = if let Ok(x) = find_err(&endpoint, "region") {x}
+                                     else {continue 'eps};
+                            let _fr = if let Some(x) = as_string(&_r) {x}
+                                     else {continue 'eps};
                             if &_fr == r {
                                 let _public_url = try!(find_err(&endpoint, "publicURL"));
                                 let storage_url = as_string(&_public_url);
@@ -153,7 +183,7 @@ impl KeystoneAuthV2 {
     ///////////////////////////////////////////
     // Authenticate using supplied parameters
     ///////////////////////////////////////////
-    fn authenticate(self: &mut KeystoneAuthV2) -> Result<(), String> {
+    fn authenticate(&self) -> Result<(), String> {
         let auth = AuthRequestV2 {
             auth: AuthRequestAuthV2 {
                 passwordCredentials: AuthRequestPasswordCredentialsV2 {
@@ -163,7 +193,8 @@ impl KeystoneAuthV2 {
             tenantName: &self.tenant
         }};
 
-        let response = try!(post_json(&self.client, &self.auth_url[..], &auth));
+        let _au = &format!("{}/{}", &self.auth_url, "tokens")[..];
+        let response = try!(post_json(&self.client, _au, &auth));
         let response_object: json::Json = match json::Json::from_str(&response) {
             Ok(j) => j,
             Err(_) => return Err(String::from("Failed to decode JSON object from str"))
@@ -196,44 +227,79 @@ impl KeystoneAuthV2 {
         };
         match storage_url {
             Some(_) => {
-                self.storage_url = storage_url;
-                self.token = as_string(&token_id);
+                let mut keystone_token = self.token.lock().unwrap();
+                keystone_token.storage_url = storage_url;
+                keystone_token.token = as_string(&token_id);
                 match expires.as_string() {
                     Some(s) => {
                         match s.parse::<DateTime<UTC>>() {
-                            Ok(d) => self.expires = Some(d),
-                            Err(_) => self.expires = None
+                            Ok(d) => keystone_token.expires = Some(d),
+                            _ => return Err(String::from("Failed to parse token expiry time"))
                         };
                     },
-                    _ => self.expires = None
+                    _ => return Err(String::from("Failed to parse token expiry time"))
                 };
                 Ok(())
             },
             _ => Err(String::from("Failed to find object-store in catalogue"))
         }
     }
+
+    unsafe fn get_token(&self) -> Result<(), String> {
+        {
+            let keystone_token = self.token.lock().unwrap();
+            match keystone_token.expires {
+                Some(datetime) => {
+                    let now = UTC::now();
+                    let d: DateTime<UTC> = datetime - Duration::hours(1);
+                    if now.lt(&d) {
+                        match keystone_token.token {
+                            Some(_) => return Ok(()),
+                            None => () //return Err(String::from("No token found"))
+                        }
+                    }
+                },
+                None => ()
+            }
+        };
+        // If we get here we need to try to authenticate again
+        return self.authenticate();
+    }
 }
 
 ////////////////////////////////////////////////
 // Get auth token, authenticating if necessary
 ////////////////////////////////////////////////
-impl Authenticate for KeystoneAuthV2 {
-    fn get_token(&mut self) -> Result<&String, String> {
-        match self.expires {
-            Some(datetime) => {
-                let now = UTC::now();
-                let d: DateTime<UTC> = datetime - Duration::hours(1);
-                if now.gt(&d) {
-                    try!(self.authenticate());
-                }
-            },
-            None => {
-                try!(self.authenticate());
+header! { (XAuthToken, "X-Auth-Token") => [String] }
+
+impl Auth for KeystoneAuthV2 {
+    fn build_request<'a>(&'a self, m: Method, path:&'a String)
+            -> Result<RequestBuilder<'a, Url>, String> {
+        // Make sure we have a valid auth token
+        unsafe { match self.get_token() {
+            Ok(()) => (),
+            Err(e) => return Err(e)
+        }};
+        let keystone_token = self.token.lock().unwrap();
+        let token = match keystone_token.token.clone() {
+            Some(t) => t,
+            None => return Err(String::from("No token found"))
+        };
+        let _us: &String = match keystone_token.storage_url {
+            Some(ref u) => u,
+            None => return Err(String::from("No base URL found"))
+        };
+        let mut url = String::from("");
+        url.push_str(_us);
+        url.push_str(path);
+        println!("{}", url);
+        match url.into_url() {
+            Ok(_u) => {
+                let mut headers = Headers::new();
+                headers.set(XAuthToken(token));
+                return Ok(self.client.request(m, _u).headers(headers))
             }
-        }
-        match self.token {
-            Some(ref t) => Ok(t),
-            None => Err(String::from("No token found"))
+            _ => return Err(String::from("Failed to parse URL"))
         }
     }
 }

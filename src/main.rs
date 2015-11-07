@@ -1,12 +1,17 @@
 extern crate rustc_serialize;
 extern crate docopt;
 extern crate chrono;
+#[macro_use] extern crate hyper;
 
 use docopt::Docopt;
 
 mod auth;
+mod client;
 
-use auth::{KeystoneAuthV2, Authenticate};
+use auth::KeystoneAuthV2;
+use client::SwiftClient;
+use hyper::status::StatusCode;
+use std::env;
 
 const USAGE: &'static str = "
 Usage: swift [options] [<command>]
@@ -24,31 +29,48 @@ Options:
 #[derive(Debug, RustcDecodable)]
 struct Args {
     arg_command: Option<String>,
-    flag_user: String,
-    flag_tenant: String,
-    flag_auth_url: String,
-    flag_password: String,
+    flag_user: Option<String>,
+    flag_tenant: Option<String>,
+    flag_auth_url: Option<String>,
+    flag_password: Option<String>,
     flag_region: Option<String>
 }
 
+fn get_arg(arg: Option<String>, os_var: String) -> Option<String> {
+    match env::var(os_var) {
+        Ok(v) => match arg {
+            Some(u) => Some(u),
+            None => Some(v)
+        },
+        Err(_) => match arg {
+            Some(u) => Some(u),
+            None => None
+        }
+    }
+}
+
 fn main() {
-    println!("STARTING AUTH");
     let args: Args = Docopt::new(USAGE)
                             .and_then(|dopt| dopt.decode())
                             .unwrap_or_else(|e| e.exit());
 
-    let user = args.flag_user;
-    let pwd = args.flag_password;
-    let tenant = args.flag_tenant;
-    let url = args.flag_auth_url;
+    let user = get_arg(args.flag_user, String::from("OS_USERNAME")).unwrap();
+    let pwd = get_arg(args.flag_password, String::from("OS_PASSWORD")).unwrap();
+    let tenant = get_arg(args.flag_tenant, String::from("OS_TENANT_NAME")).unwrap();
+    let url = get_arg(args.flag_auth_url, String::from("OS_AUTH_URL")).unwrap();
     let region = args.flag_region;
 
-    let mut ksauth = KeystoneAuthV2::new(user, pwd, tenant, url, region);
-    let token = ksauth.get_token();
-    match token {
-        Ok(t) => println!("Success: {}", t),
-        Err(e) => println!("Fail: {}", e)
-    }
+    let ksauth = KeystoneAuthV2::new(user, pwd, tenant, url, region);
+    let mut swift_client = SwiftClient::new(ksauth);
 
-    println!("AUTH FINISHED")
+    let path = String::from("/jjw");
+    match swift_client.head(&path) {
+        Ok(resp) => {
+            assert_eq!(resp.status, StatusCode::NoContent);
+            for item in resp.headers.iter() {
+                println!("{:?}", item);
+            }
+        }
+        Err(s) => println!("{}", s)
+    };
 }
