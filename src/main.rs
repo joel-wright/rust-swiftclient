@@ -12,6 +12,8 @@ use auth::KeystoneAuthV2;
 use client::SwiftClient;
 use hyper::status::StatusCode;
 use std::env;
+use std::thread;
+use std::sync::Arc;
 
 const USAGE: &'static str = "
 Usage: swift [options] [<command>]
@@ -61,16 +63,42 @@ fn main() {
     let region = args.flag_region;
 
     let ksauth = KeystoneAuthV2::new(user, pwd, tenant, url, region);
-    let mut swift_client = SwiftClient::new(ksauth);
+    let swift_client = Arc::new(SwiftClient::new(ksauth));
 
-    let path = String::from("/jjw");
-    match swift_client.head(&path) {
-        Ok(resp) => {
-            assert_eq!(resp.status, StatusCode::NoContent);
-            for item in resp.headers.iter() {
-                println!("{:?}", item);
-            }
-        }
-        Err(s) => println!("{}", s)
+    let thread_action = {
+        let sc = swift_client.clone();
+        let thread_action = thread::spawn(move || {
+            let path = String::from("/jjw");
+            match sc.head(&path) {
+                Ok(resp) => {
+                    assert_eq!(resp.status, StatusCode::NoContent);
+                    for item in resp.headers.iter() {
+                        println!("{:?}", item);
+                    }
+                }
+                Err(s) => println!("{}", s)
+            };
+        });
+        thread_action
     };
+
+    {
+        let path = String::from("/jjw/loadsafiles/006224");
+        let sc = swift_client.clone();
+        match sc.head(&path) {
+            Ok(resp) => {
+                //assert_eq!(resp.status, StatusCode::NoContent);
+                for item in resp.headers.iter() {
+                    println!("{:?}", item);
+                }
+            }
+            Err(s) => println!("{}", s)
+        };
+    }
+
+    let result = thread_action.join();
+    match result {
+        Err(_) => println!("All went boom"),
+        _ => ()
+    }
 }

@@ -15,7 +15,8 @@ use std::io::Read;
 use std::option::Option;
 use std::result::Result;
 use std::sync::Mutex;
-use self::url::Url;
+use std::error;
+use std::fmt;
 
 /////////////////////////////////////
 // Enum for containing auth methods
@@ -25,13 +26,59 @@ use self::url::Url;
 //    KeystoneAuthV2
 //}
 
+////////////////////
+// Errors for Auth
+////////////////////
+#[derive(Debug)]
+pub enum AuthError {
+    Http(hyper::error::Error),
+    JsonEncode(rustc_serialize::json::EncoderError),
+    JsonDecode(rustc_serialize::json::ParserError),
+    JsonContent(String),
+    Fail(String)
+}
+
+impl fmt::Display for AuthError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            AuthError::Http(ref err) => write!(f, "HTTP error: {}", err),
+            AuthError::JsonEncode(ref err) => write!(f, "JSON Encode error: {}", err),
+            AuthError::JsonDecode(ref err) => write!(f, "JSON Decode error: {}", err),
+            AuthError::JsonContent(ref s) => write!(f, "JSON Content error: {}", s),
+            AuthError::Fail(ref s) => write!(f, "Fail: {}", s),
+        }
+    }
+}
+
+impl error::Error for AuthError {
+    fn description(&self) -> &str {
+        match *self {
+            AuthError::Http(ref err) => err.description(),
+            AuthError::JsonEncode(ref err) => err.description(),
+            AuthError::JsonDecode(ref err) => err.description(),
+            AuthError::JsonContent(ref s) => s,
+            AuthError::Fail(ref s) => s,
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            AuthError::Http(ref err) => Some(err),
+            AuthError::JsonEncode(ref err) => Some(err),
+            AuthError::JsonDecode(ref err) => Some(err),
+            AuthError::JsonContent(_) => None,
+            AuthError::Fail(_) => None,
+        }
+    }
+}
+
 ///////////////////////////////////////////////
 // Trait to be implemented by any auth object
 ///////////////////////////////////////////////
 
 pub trait Auth {
     fn build_request<'a>(&'a self, m: Method, path:&'a String)
-        -> Result<RequestBuilder<'a, Url>, String>;
+        -> Result<RequestBuilder<'a>, AuthError>;
 }
 
 /////////////////////////////////////////////////
@@ -39,11 +86,11 @@ pub trait Auth {
 /////////////////////////////////////////////////
 
 fn post_json<T>(client: &Client, url: &str, payload: &T)
-        -> Result<String, String> where T: Encodable {
+        -> Result<String, AuthError> where T: Encodable {
     // POSTs an encodable payload to a given URL
     let body: String = match json::encode(payload) {
         Ok(s) => s,
-        Err(_) => return Err(String::from("Failed to encode JSON body"))
+        Err(e) => return Err(AuthError::JsonEncode(e))
     };
     let mut headers = Headers::new();
     headers.set(ContentType::json());
@@ -55,11 +102,11 @@ fn post_json<T>(client: &Client, url: &str, payload: &T)
             res.read_to_string(&mut _b).unwrap();
             Ok(_b)
         },
-        Err(_) => Err(String::from("POST request failed"))
+        Err(e) => Err(AuthError::Http(e))
     }
 }
 
-fn find_err<'j>(obj: &'j json::Json, key: &'j str) -> Result<&'j json::Json, String> {
+fn find_err<'j>(obj: &'j json::Json, key: &'j str) -> Result<&'j json::Json, AuthError> {
     match obj.as_object() {
         Some(_) => {
             match obj.find(key) {
@@ -67,11 +114,14 @@ fn find_err<'j>(obj: &'j json::Json, key: &'j str) -> Result<&'j json::Json, Str
                 None => {
                     //println!("Key not found {}", key);
                     let err_msg = format!("Key not found: {}", key);
-                    Err(err_msg)
+                    Err(AuthError::JsonContent(err_msg))
                 }
             }
         },
-        _ => Err(String::from("Not a JSON object"))
+        _ => {
+            let err_msg = format!("No object could be decoded");
+            Err(AuthError::JsonContent(err_msg))
+        }
     }
 }
 
@@ -148,7 +198,7 @@ impl KeystoneAuthV2 {
         }
     }
 
-    fn get_endpoint(self: &KeystoneAuthV2, endpoints: &json::Json) -> Result<Option<String>, String> {
+    fn get_endpoint(self: &KeystoneAuthV2, endpoints: &json::Json) -> Result<Option<String>, AuthError> {
         match endpoints.as_array() {
             Some(endpoints_array) => {
                 match self.region {
@@ -164,7 +214,8 @@ impl KeystoneAuthV2 {
                                 return Ok(storage_url)
                             }
                         }
-                        return Err(format!("No region matching '{}' located", r))
+                        let err_msg = format!("No region matching '{}' located", r);
+                        return Err(AuthError::JsonContent(err_msg))
                     },
                     None => {
                         for endpoint in endpoints_array {
@@ -172,18 +223,22 @@ impl KeystoneAuthV2 {
                             let storage_url = as_string(&_public_url);
                             return Ok(storage_url)
                         }
-                        return Err(format!("No Endpoint for storage-url found"))
+                        let err_msg = format!("No Endpoint for storage-url found");
+                        return Err(AuthError::JsonContent(err_msg))
                     }
                 }
             },
-            None => return Err(String::from("No Endpoints Found"))
+            None => {
+                let err_msg = String::from("No Endpoints Found");
+                return Err(AuthError::JsonContent(err_msg))
+            }
         }
     }
 
     ///////////////////////////////////////////
     // Authenticate using supplied parameters
     ///////////////////////////////////////////
-    fn authenticate(&self) -> Result<(), String> {
+    fn authenticate(&self) -> Result<(), AuthError> {
         let auth = AuthRequestV2 {
             auth: AuthRequestAuthV2 {
                 passwordCredentials: AuthRequestPasswordCredentialsV2 {
@@ -197,7 +252,7 @@ impl KeystoneAuthV2 {
         let response = try!(post_json(&self.client, _au, &auth));
         let response_object: json::Json = match json::Json::from_str(&response) {
             Ok(j) => j,
-            Err(_) => return Err(String::from("Failed to decode JSON object from str"))
+            Err(e) => return Err(AuthError::JsonDecode(e))
         };
 
         // Get the expiry time and access token
@@ -234,32 +289,47 @@ impl KeystoneAuthV2 {
                     Some(s) => {
                         match s.parse::<DateTime<UTC>>() {
                             Ok(d) => keystone_token.expires = Some(d),
-                            _ => return Err(String::from("Failed to parse token expiry time"))
+                            _ => {
+                                let err_msg = String::from("Failed to parse token expiry time");
+                                return Err(AuthError::JsonContent(err_msg))
+                            }
                         };
                     },
-                    _ => return Err(String::from("Failed to parse token expiry time"))
+                    _ => {
+                        let err_msg = String::from("Failed to parse token expiry time");
+                        return Err(AuthError::JsonContent(err_msg))
+                    }
                 };
                 Ok(())
             },
-            _ => Err(String::from("Failed to find object-store in catalogue"))
+            _ => {
+                let err_msg = String::from("Failed to find object-store in catalogue");
+                Err(AuthError::JsonContent(err_msg))
+            }
         }
     }
 
-    unsafe fn get_token(&self) -> Result<(), String> {
+    unsafe fn get_token(&self) -> Result<(), AuthError> {
         {
-            let keystone_token = self.token.lock().unwrap();
-            match keystone_token.expires {
-                Some(datetime) => {
-                    let now = UTC::now();
-                    let d: DateTime<UTC> = datetime - Duration::hours(1);
-                    if now.lt(&d) {
-                        match keystone_token.token {
-                            Some(_) => return Ok(()),
-                            None => () //return Err(String::from("No token found"))
-                        }
+            match self.token.try_lock() {
+                Ok(keystone_token) => {
+                    match keystone_token.expires {
+                        Some(datetime) => {
+                            let now = UTC::now();
+                            let d: DateTime<UTC> = datetime - Duration::hours(1);
+                            if now.lt(&d) {  // If the token expires more than an hour from now
+                                             // just return it.
+                                match keystone_token.token {
+                                    Some(_) => return Ok(()),
+                                    None => ()  // No token means we need to auth
+                                }
+                            }
+                        },
+                        None => ()  // No expiry time means no token
                     }
                 },
-                None => ()
+                Err(_) => return Ok(())  // If we can't get the lock, just assume that
+                                         // another thread is authenticating
             }
         };
         // If we get here we need to try to authenticate again
@@ -274,20 +344,34 @@ header! { (XAuthToken, "X-Auth-Token") => [String] }
 
 impl Auth for KeystoneAuthV2 {
     fn build_request<'a>(&'a self, m: Method, path:&'a String)
-            -> Result<RequestBuilder<'a, Url>, String> {
+            -> Result<RequestBuilder<'a>, AuthError> {
         // Make sure we have a valid auth token
-        unsafe { match self.get_token() {
-            Ok(()) => (),
-            Err(e) => return Err(e)
-        }};
-        let keystone_token = self.token.lock().unwrap();
+        unsafe {
+            match self.get_token() {
+                Ok(()) => (),
+                Err(e) => return Err(e)
+            }
+        };
+        let keystone_token = match self.token.lock() {
+            Ok(t) => t,
+            Err(_) => {
+                let err_msg = String::from("Locking token failed");
+                return Err(AuthError::Fail(err_msg))
+            }
+        };
         let token = match keystone_token.token.clone() {
             Some(t) => t,
-            None => return Err(String::from("No token found"))
+            None => {
+                let err_msg = String::from("Cloning token failed");
+                return Err(AuthError::Fail(err_msg))
+            }
         };
         let _us: &String = match keystone_token.storage_url {
             Some(ref u) => u,
-            None => return Err(String::from("No base URL found"))
+            None => {
+                let err_msg = String::from("No base URL found");
+                return Err(AuthError::Fail(err_msg))
+            }
         };
         let mut url = String::from("");
         url.push_str(_us);
@@ -299,7 +383,10 @@ impl Auth for KeystoneAuthV2 {
                 headers.set(XAuthToken(token));
                 return Ok(self.client.request(m, _u).headers(headers))
             }
-            _ => return Err(String::from("Failed to parse URL"))
+            _ => {
+                let err_msg = String::from("Failed to parse URL");
+                return Err(AuthError::Fail(err_msg))
+            }
         }
     }
 }
