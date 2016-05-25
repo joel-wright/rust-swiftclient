@@ -10,6 +10,14 @@ chrono = ">=0.2"
 rustc-serialize = ">=0.3.19"
 url = ">=0.2"
 
+[lib]
+name = "rust_swiftclient"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rsc"
+path = "src/bin/rsc.rs"
+
 # [dependencies.chrono]
 # version = "*"
 # features = ["rustc-serialize"]

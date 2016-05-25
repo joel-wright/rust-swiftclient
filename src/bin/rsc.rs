@@ -1,16 +1,13 @@
 extern crate rustc_serialize;
 extern crate docopt;
 extern crate chrono;
-#[macro_use] extern crate hyper;
+extern crate hyper;
+extern crate rust_swiftclient;
 
 use docopt::Docopt;
-
-mod auth;
-mod client;
-
-use auth::KeystoneAuthV2;
-use client::SwiftClient;
 use hyper::status::StatusCode;
+use rust_swiftclient::swift_auth::auth_sessions::KeystoneAuthV2;
+use rust_swiftclient::swift_auth::auth_requests::AuthRequest;
 use std::env;
 use std::thread;
 use std::sync::Arc;
@@ -63,13 +60,13 @@ fn main() {
     let region = args.flag_region;
 
     let ksauth = KeystoneAuthV2::new(user, pwd, tenant, url, region);
-    let swift_client = Arc::new(SwiftClient::new(ksauth));
+    let auth_request = Arc::new(AuthRequest::new(ksauth));
 
     let thread_action = {
-        let sc = swift_client.clone();
+        let ar = auth_request.clone();
         let thread_action = thread::spawn(move || {
             let path = String::from("/jjw");
-            match sc.head(&path) {
+            match ar.head(&path) {
                 Ok(resp) => {
                     assert_eq!(resp.status, StatusCode::NoContent);
                     for item in resp.headers.iter() {
@@ -84,12 +81,15 @@ fn main() {
 
     {
         let path = String::from("/jjw/loadsafiles/006224");
-        let sc = swift_client.clone();
-        match sc.head(&path) {
+        let ar = auth_request.clone();
+        match ar.head(&path) {
             Ok(resp) => {
-                //assert_eq!(resp.status, StatusCode::NoContent);
-                for item in resp.headers.iter() {
-                    println!("{:?}", item);
+                for header in resp.headers.iter() {
+                    println!(
+                        "{0:?}: {1:?}",
+                        header.name(),
+                        header.value_string()
+                    );
                 }
             }
             Err(s) => println!("{}", s)

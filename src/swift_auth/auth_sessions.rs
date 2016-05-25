@@ -5,10 +5,10 @@ extern crate chrono;
 extern crate rustc_serialize;
 extern crate url;
 
-use self::hyper::Client;
-use self::hyper::header::{Headers, ContentType};
-use self::hyper::method::Method;
-use self::hyper::client::{IntoUrl, RequestBuilder};
+use hyper::Client;
+use hyper::header::{Headers, ContentType};
+use hyper::method::Method;
+use hyper::client::{IntoUrl, RequestBuilder};
 use chrono::{DateTime, Duration, UTC};
 use rustc_serialize::{Encodable, json};
 use std::io::Read;
@@ -41,11 +41,11 @@ pub enum AuthError {
 impl fmt::Display for AuthError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            AuthError::Http(ref err) => write!(f, "HTTP error: {}", err),
-            AuthError::JsonEncode(ref err) => write!(f, "JSON Encode error: {}", err),
-            AuthError::JsonDecode(ref err) => write!(f, "JSON Decode error: {}", err),
-            AuthError::JsonContent(ref s) => write!(f, "JSON Content error: {}", s),
-            AuthError::Fail(ref s) => write!(f, "Fail: {}", s),
+            AuthError::Http(ref err) => write!(f, "Auth HTTP error: {}", err),
+            AuthError::JsonEncode(ref err) => write!(f, "Auth JSON Encode error: {}", err),
+            AuthError::JsonDecode(ref err) => write!(f, "Auth JSON Decode error: {}", err),
+            AuthError::JsonContent(ref s) => write!(f, "Auth JSON Content error: {}", s),
+            AuthError::Fail(ref s) => write!(f, "Auth Fail: {}", s),
         }
     }
 }
