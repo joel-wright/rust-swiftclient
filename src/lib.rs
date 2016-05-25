@@ -3,4 +3,4 @@ extern crate chrono;
 extern crate rustc_serialize;
 extern crate url;
 
-pub mod swift_auth;
+pub mod auth;

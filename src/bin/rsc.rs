@@ -6,8 +6,8 @@ extern crate rust_swiftclient;
 
 use docopt::Docopt;
 use hyper::status::StatusCode;
-use rust_swiftclient::swift_auth::auth_sessions::KeystoneAuthV2;
-use rust_swiftclient::swift_auth::auth_requests::AuthRequest;
+use rust_swiftclient::auth::sessions::KeystoneAuthV2;
+use rust_swiftclient::auth::request::AuthRequest;
 use std::env;
 use std::thread;
 use std::sync::Arc;

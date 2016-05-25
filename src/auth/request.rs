@@ -6,7 +6,7 @@ use hyper;
 use std::error;
 use std::fmt;
 
-use swift_auth::auth_sessions::{Auth, AuthError}; //, KeystoneAuthV2};
+use auth::sessions::{Auth, AuthError}; //, KeystoneAuthV2};
 
 pub struct AuthRequest<T: Auth> {
     auth: T
