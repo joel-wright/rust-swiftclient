@@ -1,50 +1,12 @@
 //use hyper::header::Headers;
 use hyper::method::Method;
 use hyper::client::response;
-use hyper;
-//use hyper::client::request;
-use std::error;
-use std::fmt;
 
-use auth::sessions::{Auth, AuthError}; //, KeystoneAuthV2};
+use auth::sessions::Auth; //, KeystoneAuthV2};
+use auth::errors::AuthRequestError;
 
 pub struct AuthRequest<T: Auth> {
     auth: T
-}
-
-#[derive(Debug)]
-pub enum AuthRequestError {
-    Http(hyper::error::Error),
-    Auth(AuthError),
-    // Fail(String)
-}
-
-impl fmt::Display for AuthRequestError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            AuthRequestError::Http(ref err) => write!(f, "AuthRequest HTTP error: {}", err),
-            AuthRequestError::Auth(ref err) => write!(f, "AuthRequest Auth error: {}", err),
-            // AuthRequestError::Fail(ref s) => write!(f, "Fail: {}", s),
-        }
-    }
-}
-
-impl error::Error for AuthRequestError {
-    fn description(&self) -> &str {
-        match *self {
-            AuthRequestError::Http(ref err) => err.description(),
-            AuthRequestError::Auth(ref err) => err.description(),
-            // AuthRequestError::Fail(ref s) => s,
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            AuthRequestError::Http(ref err) => Some(err),
-            AuthRequestError::Auth(ref err) => Some(err),
-            // AuthRequestError::Fail(_) => None,
-        }
-    }
 }
 
 impl<T: Auth> AuthRequest<T> {
