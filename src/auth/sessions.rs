@@ -31,7 +31,7 @@ use auth::errors::AuthError;
 ///////////////////////////////////////////////
 
 pub trait Auth {
-    fn build_request<'a>(&'a self, m: Method, path:&'a String)
+    fn build_request<'a>(&'a self, m: Method, path:&'a String, mut headers: Headers)
         -> Result<RequestBuilder<'a>, AuthError>;
 }
 
@@ -283,7 +283,8 @@ impl KeystoneAuthV2 {
                     }
                 },
                 Err(_) => return Ok(())  // If we can't get the lock, just assume that
-                                         // another thread is authenticating
+                                         // another thread is authenticating - build_request
+                                         // will then lock until it's complete
             }
         };
         // If we get here we need to try to authenticate again
@@ -297,7 +298,7 @@ impl KeystoneAuthV2 {
 header! { (XAuthToken, "X-Auth-Token") => [String] }
 
 impl Auth for KeystoneAuthV2 {
-    fn build_request<'a>(&'a self, m: Method, path:&'a String)
+    fn build_request<'a>(&'a self, m: Method, path:&'a String, mut headers: Headers)
             -> Result<RequestBuilder<'a>, AuthError> {
         // Make sure we have a valid auth token
         unsafe {
@@ -306,6 +307,8 @@ impl Auth for KeystoneAuthV2 {
                 Err(e) => return Err(e)
             }
         };
+        // Either the current thread got the token and it's ready, or
+        // another thread is getting the token and we have to wait
         let keystone_token = match self.token.lock() {
             Ok(t) => t,
             Err(_) => {
@@ -333,7 +336,7 @@ impl Auth for KeystoneAuthV2 {
         println!("{}", url);
         match url.into_url() {
             Ok(_u) => {
-                let mut headers = Headers::new();
+                //let mut headers = Headers::new();
                 headers.set(XAuthToken(token));
                 return Ok(self.client.request(m, _u).headers(headers))
             }

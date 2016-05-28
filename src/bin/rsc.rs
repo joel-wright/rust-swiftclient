@@ -9,6 +9,8 @@ use hyper::status::StatusCode;
 use rust_swiftclient::auth::sessions::KeystoneAuthV2;
 use rust_swiftclient::auth::request::AuthRequest;
 use std::env;
+//use std::ffi::OsStr;
+use std::io::Read;
 use std::process::exit;
 use std::thread;
 use std::sync::Arc;
@@ -36,6 +38,7 @@ struct Args {
     flag_region: Option<String>
 }
 
+// I think this stuff needs to be moved to a separate options handler
 fn get_arg(arg: Option<String>, os_var: String) -> String {
     match arg {
         Some(u) => u,
@@ -76,10 +79,9 @@ fn main() {
     let thread_action = {
         let ar = auth_request.clone();
         let thread_action = thread::spawn(move || {
-            let path = String::from("/jjw");
-            match ar.head(&path) {
+            match ar.get_account(None, None, None, None, None, None) {
                 Ok(resp) => {
-                    assert_eq!(resp.status, StatusCode::NoContent);
+                    assert_eq!(resp.status, StatusCode::Ok);
                     for item in resp.headers.iter() {
                         println!("{:?}", item);
                     }
@@ -91,10 +93,11 @@ fn main() {
     };
 
     {
-        let path = String::from("/jjw/loadsafiles/006224");
+        //let path = String::from("/jjw/loadsafiles/006224");
         let ar = auth_request.clone();
-        match ar.head(&path) {
-            Ok(resp) => {
+        //match ar.head(&path) {
+        match ar.get_account(None, None, None, None, None, None) {
+            Ok(mut resp) => {
                 for header in resp.headers.iter() {
                     println!(
                         "{0:?}: {1:?}",
@@ -102,6 +105,12 @@ fn main() {
                         header.value_string()
                     );
                 }
+                let mut body = String::new();
+                let res = resp.read_to_string(&mut body);
+                match res {
+                    Ok(_) => println!("{0:?}", body),
+                    Err(e) => println!("{0:?}", e)
+                };
             }
             Err(s) => println!("{}", s)
         };
