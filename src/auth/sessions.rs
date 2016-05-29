@@ -1,17 +1,14 @@
 // The JSON structure requires CamelCase keys
 #![allow(non_snake_case)]
-extern crate hyper;
-extern crate chrono;
-extern crate rustc_serialize;
-extern crate url;
-
 use hyper::Client;
 use hyper::header::{Headers, ContentType};
 use hyper::method::Method;
 use hyper::client::{IntoUrl, RequestBuilder};
 use chrono::{DateTime, Duration, UTC};
 use rustc_serialize::{Encodable, json};
+use std::clone::Clone;
 use std::io::Read;
+use std::ops::Deref;
 use std::option::Option;
 use std::result::Result;
 use std::sync::Mutex;
@@ -66,14 +63,15 @@ fn find_err<'j>(obj: &'j json::Json, key: &'j str) -> Result<&'j json::Json, Aut
             match obj.find(key) {
                 Some(r) => Ok(r),
                 None => {
-                    //println!("Key not found {}", key);
+                    debug!("Key not found {}", key);
                     let err_msg = format!("Key not found: {}", key);
                     Err(AuthError::JsonContent(err_msg))
                 }
             }
         },
         _ => {
-            let err_msg = format!("No object could be decoded");
+            error!("No object could be decoded from {}", obj);
+            let err_msg = format!("No object could be decoded from {}", obj);
             Err(AuthError::JsonContent(err_msg))
         }
     }
@@ -82,7 +80,7 @@ fn find_err<'j>(obj: &'j json::Json, key: &'j str) -> Result<&'j json::Json, Aut
 fn as_string<'j>(obj: &'j json::Json) -> Option<String> {
     match obj.as_string() {
         Some(s) => {
-            println!("{}", s);
+            debug!("{}", s);
             Some(String::from(s))
         },
         _ => None
@@ -110,6 +108,7 @@ struct AuthRequestV2<'s> {
     auth: AuthRequestAuthV2<'s>,
 }
 
+#[derive(Clone)]
 struct KeystoneAuthV2Token {
     token: Option<String>,
     storage_url: Option<String>,
@@ -168,6 +167,7 @@ impl KeystoneAuthV2 {
                                 return Ok(storage_url)
                             }
                         }
+                        error!("No region matching '{}' located", r);
                         let err_msg = format!("No region matching '{}' located", r);
                         return Err(AuthError::JsonContent(err_msg))
                     },
@@ -177,13 +177,15 @@ impl KeystoneAuthV2 {
                             let storage_url = as_string(&_public_url);
                             return Ok(storage_url)
                         }
-                        let err_msg = format!("No Endpoint for storage-url found");
+                        error!("No endpoint for storage-url found");
+                        let err_msg = format!("No endpoint for storage-url found");
                         return Err(AuthError::JsonContent(err_msg))
                     }
                 }
             },
             None => {
-                let err_msg = String::from("No Endpoints Found");
+                error!("No endpoints found");
+                let err_msg = String::from("No endpoints found");
                 return Err(AuthError::JsonContent(err_msg))
             }
         }
@@ -193,6 +195,7 @@ impl KeystoneAuthV2 {
     // Authenticate using supplied parameters
     ///////////////////////////////////////////
     fn authenticate(&self) -> Result<(), AuthError> {
+        debug!("Starting authentication");
         let auth = AuthRequestV2 {
             auth: AuthRequestAuthV2 {
                 passwordCredentials: AuthRequestPasswordCredentialsV2 {
@@ -244,19 +247,22 @@ impl KeystoneAuthV2 {
                         match s.parse::<DateTime<UTC>>() {
                             Ok(d) => keystone_token.expires = Some(d),
                             _ => {
-                                let err_msg = String::from("Failed to parse token expiry time");
+                                error!("Failed to parse auth token expiry time");
+                                let err_msg = String::from("Failed to parse auth token expiry time");
                                 return Err(AuthError::JsonContent(err_msg))
                             }
                         };
                     },
                     _ => {
-                        let err_msg = String::from("Failed to parse token expiry time");
+                        error!("Failed to parse auth token expiry time");
+                        let err_msg = String::from("Failed to parse auth token expiry time");
                         return Err(AuthError::JsonContent(err_msg))
                     }
                 };
                 Ok(())
             },
             _ => {
+                error!("Failed to find object-store in catalogue");
                 let err_msg = String::from("Failed to find object-store in catalogue");
                 Err(AuthError::JsonContent(err_msg))
             }
@@ -309,39 +315,42 @@ impl Auth for KeystoneAuthV2 {
         };
         // Either the current thread got the token and it's ready, or
         // another thread is getting the token and we have to wait
-        let keystone_token = match self.token.lock() {
-            Ok(t) => t,
+        let keystone_token: KeystoneAuthV2Token = match self.token.lock() {
+            Ok(t) => t.deref().clone(),
             Err(_) => {
+                error!("Failed to grab the current access token");
                 let err_msg = String::from("Locking token failed");
                 return Err(AuthError::Fail(err_msg))
             }
         };
-        let token = match keystone_token.token.clone() {
+        let token = match keystone_token.token {
             Some(t) => t,
             None => {
-                let err_msg = String::from("Cloning token failed");
+                error!("No current access token found");
+                let err_msg = String::from("No current access token found");
                 return Err(AuthError::Fail(err_msg))
             }
         };
-        let _us: &String = match keystone_token.storage_url {
+        let storage_base_url: &String = match keystone_token.storage_url {
             Some(ref u) => u,
             None => {
-                let err_msg = String::from("No base URL found");
+                error!("No storage base URL found");
+                let err_msg = String::from("No storage base URL found");
                 return Err(AuthError::Fail(err_msg))
             }
         };
         let mut url = String::from("");
-        url.push_str(_us);
+        url.push_str(storage_base_url);
         url.push_str(path);
-        println!("{}", url);
+        debug!("Request base URL: {}", url);
         match url.into_url() {
             Ok(_u) => {
-                //let mut headers = Headers::new();
                 headers.set(XAuthToken(token));
                 return Ok(self.client.request(m, _u).headers(headers))
             }
             _ => {
-                let err_msg = String::from("Failed to parse URL");
+                error!("Failed to parse request base URL: {}", url);
+                let err_msg = String::from("Failed to parse baes request URL");
                 return Err(AuthError::Fail(err_msg))
             }
         }
