@@ -5,15 +5,18 @@ extern crate hyper;
 extern crate rust_swiftclient;
 
 use docopt::Docopt;
-use hyper::status::StatusCode;
-use rust_swiftclient::auth::sessions::KeystoneAuthV2;
-use rust_swiftclient::auth::request::AuthRequest;
+//use hyper::status::StatusCode;
+
 use std::env;
-//use std::ffi::OsStr;
-use std::io::Read;
+//use std::io::Read;
 use std::process::exit;
 use std::thread;
 use std::sync::Arc;
+
+use rust_swiftclient::auth::sessions::KeystoneAuthV2;
+use rust_swiftclient::auth::request::{
+    HeadAccount, GetAccount, RunSwiftRequest
+};
 
 const USAGE: &'static str = "
 Usage: swift [options] [<command>]
@@ -74,30 +77,36 @@ fn main() {
     let region = get_optional_arg(args.flag_region, String::from("OS_REGION_NAME"));
 
     let ksauth = KeystoneAuthV2::new(user, pwd, tenant, url, region);
-    let auth_request = Arc::new(AuthRequest::new(ksauth));
+    let auth = Arc::new(ksauth);
 
     let thread_action = {
-        let ar = auth_request.clone();
+        let a = auth.clone();
         let thread_action = thread::spawn(move || {
-            match ar.get_account(None, None, None, None, None, None) {
+            let ga = GetAccount::new();
+            match ga.run_request(a.as_ref()) {
                 Ok(resp) => {
-                    assert_eq!(resp.status, StatusCode::Ok);
-                    for item in resp.headers.iter() {
-                        println!("{:?}", item);
+                    for header in resp.headers.iter() {
+                        println!(
+                            "{0:?}: {1:?}",
+                            header.name(),
+                            header.value_string()
+                        );
                     }
+                },
+                Err(s) => {
+                    println!("{}", s);
+                    return ()
                 }
-                Err(s) => println!("{}", s)
             };
         });
         thread_action
     };
 
     {
-        //let path = String::from("/jjw/loadsafiles/006224");
-        let ar = auth_request.clone();
-        //match ar.head(&path) {
-        match ar.get_account(None, None, None, None, None, None) {
-            Ok(mut resp) => {
+        let a = auth.clone();
+        let ha = HeadAccount::new();
+        match ha.run_request(a.as_ref()) {
+            Ok(resp) => {
                 for header in resp.headers.iter() {
                     println!(
                         "{0:?}: {1:?}",
@@ -105,13 +114,7 @@ fn main() {
                         header.value_string()
                     );
                 }
-                let mut body = String::new();
-                let res = resp.read_to_string(&mut body);
-                match res {
-                    Ok(_) => println!("{0:?}", body),
-                    Err(e) => println!("{0:?}", e)
-                };
-            }
+            },
             Err(s) => println!("{}", s)
         };
     }

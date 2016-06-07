@@ -15,26 +15,26 @@ use std::sync::Mutex;
 
 use auth::errors::AuthError;
 
-/////////////////////////////////////
-// Enum for containing auth methods
-/////////////////////////////////////
+/*
+ * Enum for containing auth methods
+ */
 
-//pub enum Auth {
-//    KeystoneAuthV2
-//}
+// pub enum Auth {
+//     KeystoneAuthV2
+// }
 
-///////////////////////////////////////////////
-// Trait to be implemented by any auth object
-///////////////////////////////////////////////
+/*
+ * Trait to be implemented by any auth object
+ */
 
 pub trait Auth {
-    fn build_request<'a>(&'a self, m: Method, path:&'a String, mut headers: Headers)
-        -> Result<RequestBuilder<'a>, AuthError>;
+    fn build_request(&self, m: Method, path: String, mut headers: Headers)
+        -> Result<RequestBuilder, AuthError>;
 }
 
-/////////////////////////////////////////////////
-// Helper methods for manipulating JSON objects
-/////////////////////////////////////////////////
+/*
+ * Helper methods for manipulating JSON objects
+ */
 
 fn post_json<T>(client: &Client, url: &str, payload: &T)
         -> Result<String, AuthError> where T: Encodable {
@@ -87,9 +87,9 @@ fn as_string<'j>(obj: &'j json::Json) -> Option<String> {
     }
 }
 
-//////////////////////
-//  Keystone Auth V2
-//////////////////////
+/*
+ *  Keystone Auth V2
+ */
 
 #[derive(RustcEncodable)]
 struct AuthRequestPasswordCredentialsV2<'s> {
@@ -134,6 +134,9 @@ pub struct KeystoneAuthV2 {
     client: Client,
     token: Mutex<KeystoneAuthV2Token>,
 }
+
+unsafe impl Send for KeystoneAuthV2 {}
+unsafe impl Sync for KeystoneAuthV2 {}
 
 impl KeystoneAuthV2 {
     pub fn new (username: String, password: String, tenant: String,
@@ -191,9 +194,9 @@ impl KeystoneAuthV2 {
         }
     }
 
-    ///////////////////////////////////////////
-    // Authenticate using supplied parameters
-    ///////////////////////////////////////////
+    /*
+     * Authenticate using supplied parameters
+     */
     fn authenticate(&self) -> Result<(), AuthError> {
         debug!("Starting authentication");
         let auth = AuthRequestV2 {
@@ -298,14 +301,14 @@ impl KeystoneAuthV2 {
     }
 }
 
-////////////////////////////////////////////////
-// Get auth token, authenticating if necessary
-////////////////////////////////////////////////
+/*
+ * Get auth token, authenticating if necessary
+ */
 header! { (XAuthToken, "X-Auth-Token") => [String] }
 
 impl Auth for KeystoneAuthV2 {
-    fn build_request<'a>(&'a self, m: Method, path:&'a String, mut headers: Headers)
-            -> Result<RequestBuilder<'a>, AuthError> {
+    fn build_request(&self, m: Method, path: String, mut headers: Headers)
+            -> Result<RequestBuilder, AuthError> {
         // Make sure we have a valid auth token
         unsafe {
             match self.get_token() {
@@ -341,7 +344,7 @@ impl Auth for KeystoneAuthV2 {
         };
         let mut url = String::from("");
         url.push_str(storage_base_url);
-        url.push_str(path);
+        url.push_str(&path);
         debug!("Request base URL: {}", url);
         match url.into_url() {
             Ok(_u) => {
