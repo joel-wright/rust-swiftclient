@@ -3,6 +3,7 @@ use hyper::method::Method;
 use hyper::client::response;
 use hyper::client::RequestBuilder;
 
+use std::sync::Arc;
 use std::vec::Vec;
 
 use auth::sessions::Auth;
@@ -14,38 +15,67 @@ pub enum Format {
     Plain
 }
 
+unsafe impl<AS: Sized+Auth> Send for SwiftConnection<AS> {}
+unsafe impl<AS: Sized+Auth> Sync for SwiftConnection<AS> {}
+
+pub struct SwiftConnection<A> {
+    auth: Arc<A>
+}
+
+impl<AS: Sized+Auth> SwiftConnection<AS> {
+    pub fn new(auth: AS) -> SwiftConnection<AS> {
+        SwiftConnection{
+            auth: Arc::new(auth)
+        }
+    }
+
+    pub fn head_account(&self) -> HeadAccount<AS> {
+        HeadAccount::new(self.auth.clone())
+    }
+
+    pub fn get_account(&self) -> GetAccount<AS> {
+        GetAccount::new(self.auth.clone())
+    }
+
+    pub fn post_account(&self) -> PostAccount<AS> {
+        PostAccount::new(self.auth.clone())
+    }
+}
+
 pub trait RunSwiftRequest {
-    fn run_request(&self, auth: &Auth)
+    fn run_request(&self)
         -> Result<response::Response, AuthRequestError>;
 }
 
 /*
  * Get Account
  */
-pub struct GetAccount {
+pub struct GetAccount<A> {
     marker: Option<String>,
     limit: u32,
     prefix: Option<String>,
     end_marker: Option<String>,
     format: Format,
-    headers: Headers
+    headers: Headers,
+    auth: Arc<A>
 }
 
-impl GetAccount {
-    pub fn new() -> GetAccount {
-        GetAccount{
+impl<AS: Sized+Auth> GetAccount<AS> {
+    pub fn new(auth: Arc<AS>) -> GetAccount<AS> {
+        GetAccount {
             marker: None,
             limit: 10000,
             prefix: None,
             end_marker: None,
             format: Format::JSON,
-            headers: Headers::new()
+            headers: Headers::new(),
+            auth: auth
         }
     }
 }
 
-impl RunSwiftRequest for GetAccount {
-    fn run_request(&self, auth: &Auth)
+impl<AS: Sized+Auth> RunSwiftRequest for GetAccount<AS> {
+    fn run_request(&self)
             -> Result<response::Response, AuthRequestError> {
         let mut path = "".to_string();
         let mut query_params = Vec::new();
@@ -70,7 +100,7 @@ impl RunSwiftRequest for GetAccount {
         if !query_params.is_empty() {
             path = "?".to_string() + &query_params.join("&").to_string()
         };
-        match build_request(auth, Method::Get, path, self.headers.clone()) {
+        match build_request(self.auth.as_ref(), Method::Get, path, self.headers.clone()) {
             Ok(req) => run_request(req),
             Err(e) => Err(e)
         }
@@ -80,23 +110,28 @@ impl RunSwiftRequest for GetAccount {
 /*
  * Head Account
  */
-pub struct HeadAccount {
-    headers: Headers
+pub struct HeadAccount<A> {
+    headers: Headers,
+    auth: Arc<A>
 }
 
-impl HeadAccount {
-    pub fn new() -> HeadAccount {
-        HeadAccount{
-            headers: Headers::new()
+impl<AS: Sized+Auth> HeadAccount<AS> {
+    pub fn new(auth: Arc<AS>) -> HeadAccount<AS> {
+        HeadAccount {
+            headers: Headers::new(),
+            auth: auth
         }
     }
 }
 
-impl RunSwiftRequest for HeadAccount {
-    fn run_request(&self, auth: &Auth)
+impl<AS: Sized+Auth> RunSwiftRequest for HeadAccount<AS> {
+    fn run_request(&self)
             -> Result<response::Response, AuthRequestError> {
         let path = "".to_string();
-        match build_request(auth, Method::Head, path, self.headers.clone()) {
+        match build_request(
+                self.auth.as_ref(),
+                Method::Head,
+                path, self.headers.clone()) {
             Ok(req) => run_request(req),
             Err(e) => Err(e)
         }
@@ -106,23 +141,28 @@ impl RunSwiftRequest for HeadAccount {
 /*
  * Post Account
  */
-pub struct PostAccount {
-    headers: Headers
+pub struct PostAccount<A> {
+    headers: Headers,
+    auth: Arc<A>
 }
 
-impl PostAccount {
-    pub fn new() -> PostAccount {
-        PostAccount{
-            headers: Headers::new()
+impl<AS: Sized+Auth> PostAccount<AS> {
+    pub fn new(auth: Arc<AS>) -> PostAccount<AS> {
+        PostAccount {
+            headers: Headers::new(),
+            auth: auth
         }
     }
 }
 
-impl RunSwiftRequest for PostAccount {
-    fn run_request(&self, auth: &Auth)
+impl<AS: Sized+Auth> RunSwiftRequest for PostAccount<AS> {
+    fn run_request(&self)
             -> Result<response::Response, AuthRequestError> {
         let path = "".to_string();
-        match build_request(auth, Method::Post, path, self.headers.clone()) {
+        match build_request(
+                self.auth.as_ref(),
+                Method::Post,
+                path, self.headers.clone()) {
             Ok(req) => run_request(req),
             Err(e) => Err(e)
         }

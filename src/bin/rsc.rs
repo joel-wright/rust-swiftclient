@@ -5,17 +5,15 @@ extern crate hyper;
 extern crate rust_swiftclient;
 
 use docopt::Docopt;
-//use hyper::status::StatusCode;
 
 use std::env;
-//use std::io::Read;
 use std::process::exit;
 use std::thread;
 use std::sync::Arc;
 
 use rust_swiftclient::auth::sessions::KeystoneAuthV2;
 use rust_swiftclient::auth::request::{
-    HeadAccount, GetAccount, RunSwiftRequest
+    RunSwiftRequest, SwiftConnection
 };
 
 const USAGE: &'static str = "
@@ -77,13 +75,13 @@ fn main() {
     let region = get_optional_arg(args.flag_region, String::from("OS_REGION_NAME"));
 
     let ksauth = KeystoneAuthV2::new(user, pwd, tenant, url, region);
-    let auth = Arc::new(ksauth);
+    let swift: Arc<SwiftConnection<KeystoneAuthV2>> = Arc::new(SwiftConnection::new(ksauth));
 
     let thread_action = {
-        let a = auth.clone();
+        let sw = swift.clone();
         let thread_action = thread::spawn(move || {
-            let ga = GetAccount::new();
-            match ga.run_request(a.as_ref()) {
+            let ga = sw.get_account();
+            match ga.run_request() {
                 Ok(resp) => {
                     for header in resp.headers.iter() {
                         println!(
@@ -103,9 +101,8 @@ fn main() {
     };
 
     {
-        let a = auth.clone();
-        let ha = HeadAccount::new();
-        match ha.run_request(a.as_ref()) {
+        let ha = swift.head_account();
+        match ha.run_request() {
             Ok(resp) => {
                 for header in resp.headers.iter() {
                     println!(
