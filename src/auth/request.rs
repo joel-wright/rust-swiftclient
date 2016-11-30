@@ -40,6 +40,14 @@ impl<AS: Sized+Auth> SwiftConnection<AS> {
     pub fn post_account(&self) -> PostAccount<AS> {
         PostAccount::new(self.auth.clone())
     }
+
+    pub fn get_object(&self, path: String) -> GetObject<AS> {
+        GetObject::new(self.auth.clone(), path)
+    }
+
+    pub fn put_object(&self, path: String, data: Vec<u8>) -> PutObject<AS> {
+        PutObject::new(self.auth.clone(), path, data)
+    }
 }
 
 pub trait RunSwiftRequest {
@@ -164,6 +172,70 @@ impl<AS: Sized+Auth> RunSwiftRequest for PostAccount<AS> {
                 Method::Post,
                 path, self.headers.clone()) {
             Ok(req) => run_request(req),
+            Err(e) => Err(e)
+        }
+    }
+}
+
+
+/*
+ * Get Object
+ */
+pub struct GetObject<A> {
+    path: String,
+    headers: Headers,
+    auth: Arc<A>
+}
+
+
+impl<AS: Sized+Auth> GetObject<AS> {
+    pub fn new(auth: Arc<AS>, path: String) -> GetObject<AS> {
+        GetObject {
+            path: path,
+            headers: Headers::new(),
+            auth: auth
+        }
+    }
+}
+
+impl<AS: Sized+Auth> RunSwiftRequest for GetObject<AS> {
+    fn run_request(&self)
+            -> Result<response::Response, AuthRequestError> {
+        match build_request(self.auth.as_ref(), Method::Get, self.path.clone(), self.headers.clone()) {
+            Ok(req) => run_request(req),
+            Err(e) => Err(e)
+        }
+    }
+}
+
+
+/*
+ * Put Object
+ */
+pub struct PutObject<A> {
+    path: String,
+    headers: Headers,
+    auth: Arc<A>,
+    data: Vec<u8>,
+}
+
+
+impl<AS: Sized+Auth> PutObject<AS> {
+    pub fn new(auth: Arc<AS>, path: String, data: Vec<u8>) -> PutObject<AS> {
+        PutObject {
+            path: path,
+            headers: Headers::new(),
+            auth: auth,
+            data: data,
+        }
+    }
+}
+
+impl<AS: Sized+Auth> RunSwiftRequest for PutObject<AS> {
+    fn run_request(&self)
+            -> Result<response::Response, AuthRequestError> {
+        match build_request(self.auth.as_ref(), Method::Put, self.path.clone(), self.headers.clone()) {
+            Ok(req) => run_request(req.body(self.data.as_slice())),
             Err(e) => Err(e)
         }
     }
