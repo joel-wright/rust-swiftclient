@@ -5,3 +5,4 @@ extern crate rustc_serialize;
 extern crate url;
 
 pub mod auth;
+pub mod client;

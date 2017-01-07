@@ -1,10 +1,10 @@
 // The JSON structure requires CamelCase keys
 #![allow(non_snake_case)]
+use chrono::{DateTime, Duration, UTC};
 use hyper::Client;
 use hyper::header::{Headers, ContentType};
 use hyper::method::Method;
 use hyper::client::{IntoUrl, RequestBuilder};
-use chrono::{DateTime, Duration, UTC};
 use rustc_serialize::{Encodable, json};
 use std::clone::Clone;
 use std::io::Read;
@@ -12,16 +12,9 @@ use std::ops::Deref;
 use std::option::Option;
 use std::result::Result;
 use std::sync::Mutex;
+use std::sync::mpsc::channel;
 
 use auth::errors::AuthError;
-
-/*
- * Enum for containing auth methods
- */
-
-// pub enum Auth {
-//     KeystoneAuthV2
-// }
 
 /*
  * Trait to be implemented by any auth object
@@ -36,13 +29,14 @@ pub trait Auth {
  * Helper methods for manipulating JSON objects
  */
 
-fn post_json<T>(client: &Client, url: &str, payload: &T)
+fn post_json<T>(client: &Client, url: &str, payload: &T, sender: Sender<String>)
         -> Result<String, AuthError> where T: Encodable {
     // POSTs an encodable payload to a given URL
     let body: String = match json::encode(payload) {
         Ok(s) => s,
         Err(e) => return Err(AuthError::JsonEncode(e))
     };
+    let request = RequestAuthToken(body, sender);
     let mut headers = Headers::new();
     headers.set(ContentType::json());
     let post_res = client.post(url).body(&body[..]).headers(headers).send();
@@ -132,6 +126,8 @@ pub struct KeystoneAuthV2 {
     auth_url: String,
     region: Option<String>,
     client: Client,
+    sender: Sender<String>,
+    receiver: Receiver<String>,
     token: Mutex<KeystoneAuthV2Token>,
 }
 
@@ -143,14 +139,17 @@ impl KeystoneAuthV2 {
                 auth_url: String, region: Option<String>) -> KeystoneAuthV2 {
         let client = Client::new();
         let token = KeystoneAuthV2Token::new();
+        let (tx, rx) = channel();
         KeystoneAuthV2 {
             username: username,
             password: password,
             tenant: tenant,
             auth_url: auth_url,
             region: region,
-            token: Mutex::new(token),
-            client: client
+            client: client,
+            sender: tx,
+            receiver: rx,
+            token: Mutex::new(token)
         }
     }
 
@@ -209,7 +208,8 @@ impl KeystoneAuthV2 {
         }};
 
         let _au = &format!("{}/{}", &self.auth_url, "tokens")[..];
-        let response = try!(post_json(&self.client, _au, &auth));
+        let sender = self.sender.clone();
+        let response = try!(post_json(&self.client, _au, &auth, sender));
         let response_object: json::Json = match json::Json::from_str(&response) {
             Ok(j) => j,
             Err(e) => return Err(AuthError::JsonDecode(e))

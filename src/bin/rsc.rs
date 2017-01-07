@@ -12,7 +12,7 @@ use std::thread;
 use std::sync::Arc;
 
 use rust_swiftclient::auth::sessions::KeystoneAuthV2;
-use rust_swiftclient::auth::request::{
+use rust_swiftclient::client::request::{
     RunSwiftRequest, SwiftConnection
 };
 
