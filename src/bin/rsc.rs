@@ -83,7 +83,7 @@ fn main() {
             let ga = sw.get_account();
             match ga.run_request() {
                 Ok(resp) => {
-                    for header in resp.headers.iter() {
+                    for header in resp.headers().iter() {
                         println!(
                             "{0:?}: {1:?}",
                             header.name(),
@@ -104,7 +104,7 @@ fn main() {
         let ha = swift.head_account();
         match ha.run_request() {
             Ok(resp) => {
-                for header in resp.headers.iter() {
+                for header in resp.headers().iter() {
                     println!(
                         "{0:?}: {1:?}",
                         header.name(),

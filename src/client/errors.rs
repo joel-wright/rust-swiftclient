@@ -1,4 +1,4 @@
-use hyper;
+use reqwest;
 use std::error;
 use std::fmt;
 
@@ -10,7 +10,7 @@ use auth::errors::AuthError;
 
 #[derive(Debug)]
 pub enum SwiftError {
-    Http(hyper::error::Error),
+    Http(reqwest::Error),
     Auth(AuthError)
     // there will probably be others
 }

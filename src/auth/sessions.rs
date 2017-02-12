@@ -1,10 +1,11 @@
 // The JSON structure requires CamelCase keys
 #![allow(non_snake_case)]
 use chrono::{DateTime, Duration, UTC};
-use hyper::Client;
+use hyper::client::IntoUrl;
 use hyper::header::{Headers, ContentType};
 use hyper::method::Method;
-use hyper::client::{IntoUrl, RequestBuilder};
+use reqwest::Client;
+use reqwest::RequestBuilder;
 use rustc_serialize::{Encodable, json};
 use std::clone::Clone;
 use std::io::Read;
@@ -12,7 +13,7 @@ use std::ops::Deref;
 use std::option::Option;
 use std::result::Result;
 use std::sync::Mutex;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 use auth::errors::AuthError;
 
@@ -36,7 +37,7 @@ fn post_json<T>(client: &Client, url: &str, payload: &T, sender: Sender<String>)
         Ok(s) => s,
         Err(e) => return Err(AuthError::JsonEncode(e))
     };
-    let request = RequestAuthToken(body, sender);
+    //let request = RequestAuthToken(body, sender);
     let mut headers = Headers::new();
     headers.set(ContentType::json());
     let post_res = client.post(url).body(&body[..]).headers(headers).send();
@@ -137,7 +138,7 @@ unsafe impl Sync for KeystoneAuthV2 {}
 impl KeystoneAuthV2 {
     pub fn new (username: String, password: String, tenant: String,
                 auth_url: String, region: Option<String>) -> KeystoneAuthV2 {
-        let client = Client::new();
+        let client = Client::new().unwrap();
         let token = KeystoneAuthV2Token::new();
         let (tx, rx) = channel();
         KeystoneAuthV2 {
@@ -353,7 +354,7 @@ impl Auth for KeystoneAuthV2 {
             }
             _ => {
                 error!("Failed to parse request base URL: {}", url);
-                let err_msg = String::from("Failed to parse baes request URL");
+                let err_msg = String::from("Failed to parse base request URL");
                 return Err(AuthError::Fail(err_msg))
             }
         }

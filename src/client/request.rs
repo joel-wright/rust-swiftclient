@@ -1,8 +1,8 @@
 use hyper::header::Headers;
 use hyper::method::Method;
 use hyper::net::Streaming;
-use hyper::client::{request, response};
-use hyper::client::RequestBuilder;
+//use hyper::client::{request, response};
+use reqwest::{RequestBuilder, Response};
 
 use std::fmt::Display;
 use std::sync::Arc;
@@ -65,7 +65,7 @@ impl<AS: Sized+Auth> SwiftConnection<AS> {
 
 pub trait RunSwiftRequest {
     fn run_request(&self)
-        -> Result<response::Response, SwiftError>;
+        -> Result<Response, SwiftError>;
 
     fn add_query_param<K: Display, V: Display>(
         &self, name: &K, value: &V, query_params: &mut Vec<String>
@@ -115,7 +115,7 @@ impl<AS: Sized+Auth> GetAccount<AS> {
 
 impl<AS: Sized+Auth> RunSwiftRequest for GetAccount<AS> {
     fn run_request(&self)
-            -> Result<response::Response, SwiftError> {
+            -> Result<Response, SwiftError> {
         let mut query_params = Vec::new();
         self.add_query_param(&"limit", &self.limit, &mut query_params);
         self.add_optional_query_param(
@@ -162,7 +162,7 @@ impl<AS: Sized+Auth> HeadAccount<AS> {
 
 impl<AS: Sized+Auth> RunSwiftRequest for HeadAccount<AS> {
     fn run_request(&self)
-            -> Result<response::Response, SwiftError> {
+            -> Result<Response, SwiftError> {
         let path = "".to_string();
         match build_request(
                 self.auth.as_ref(),
@@ -194,7 +194,7 @@ impl<AS: Sized+Auth> PostAccount<AS> {
 
 impl<AS: Sized+Auth> RunSwiftRequest for PostAccount<AS> {
     fn run_request(&self)
-            -> Result<response::Response, SwiftError> {
+            -> Result<Response, SwiftError> {
         let path = "".to_string();
         match build_request(
                 self.auth.as_ref(),
@@ -242,7 +242,7 @@ impl<AS: Sized+Auth> GetContainer<AS> {
 
 impl<AS: Sized+Auth> RunSwiftRequest for GetContainer<AS> {
     fn run_request(&self)
-            -> Result<response::Response, SwiftError> {
+            -> Result<Response, SwiftError> {
         let mut query_params = Vec::new();
         self.add_query_param(&"limit", &self.limit, &mut query_params);
         self.add_optional_query_param(
@@ -302,7 +302,7 @@ impl<AS: Sized+Auth> GetObject<AS> {
 
 impl<AS: Sized+Auth> RunSwiftRequest for GetObject<AS> {
     fn run_request(&self)
-        -> Result<response::Response, SwiftError>
+        -> Result<Response, SwiftError>
     {
         let mut path = format!("{}/{}", self.container, self.object);
         if self.multipart_manifest_get {
@@ -345,7 +345,7 @@ impl<AS: Sized+Auth> PutObject<AS> {
 
 impl<AS: Sized+Auth> RunSwiftRequest for PutObject<AS> {
     fn run_request(&self)
-            -> Result<response::Response, SwiftError> {
+            -> Result<Response, SwiftError> {
         let mut path = format!("{}/{}", self.container, self.object);
         if self.multipart_manifest_put {
             path = path + &format!("?{}={}", &"multipart-manifest", &"put");
@@ -380,7 +380,7 @@ fn build_request(auth: &Auth, method: Method, path: String, headers: Headers)
 }
 
 fn make_request(request: RequestBuilder)
-    -> Result<response::Response, SwiftError>
+    -> Result<Response, SwiftError>
 {
     let resp = match request.send() {
         Ok(r) => r,

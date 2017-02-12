@@ -1,4 +1,4 @@
-use hyper;
+use reqwest;
 use rustc_serialize;
 use std::error;
 use std::fmt;
@@ -9,7 +9,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum AuthError {
-    Http(hyper::error::Error),
+    Http(reqwest::Error),
     JsonEncode(rustc_serialize::json::EncoderError),
     JsonDecode(rustc_serialize::json::ParserError),
     JsonContent(String),
