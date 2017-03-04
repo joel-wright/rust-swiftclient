@@ -1,48 +1,15 @@
-use hyper;
+use reqwest;
 use rustc_serialize;
 use std::error;
 use std::fmt;
 
-///////////////////////////
-// Errors for AuthRequest
-///////////////////////////
-#[derive(Debug)]
-pub enum AuthRequestError {
-    Http(hyper::error::Error),
-    Auth(AuthError)
-}
+/*
+ * Errors for Auth
+ */
 
-impl fmt::Display for AuthRequestError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            AuthRequestError::Http(ref err) => write!(f, "AuthRequest HTTP error: {}", err),
-            AuthRequestError::Auth(ref err) => write!(f, "AuthRequest Auth error: {}", err)
-        }
-    }
-}
-
-impl error::Error for AuthRequestError {
-    fn description(&self) -> &str {
-        match *self {
-            AuthRequestError::Http(ref err) => err.description(),
-            AuthRequestError::Auth(ref err) => err.description()
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            AuthRequestError::Http(ref err) => Some(err),
-            AuthRequestError::Auth(ref err) => Some(err)
-        }
-    }
-}
-
-////////////////////
-// Errors for Auth
-////////////////////
 #[derive(Debug)]
 pub enum AuthError {
-    Http(hyper::error::Error),
+    Http(reqwest::Error),
     JsonEncode(rustc_serialize::json::EncoderError),
     JsonDecode(rustc_serialize::json::ParserError),
     JsonContent(String),

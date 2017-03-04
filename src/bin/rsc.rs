@@ -12,7 +12,7 @@ use std::thread;
 use std::sync::Arc;
 
 use rust_swiftclient::auth::sessions::KeystoneAuthV2;
-use rust_swiftclient::auth::request::{
+use rust_swiftclient::client::request::{
     RunSwiftRequest, SwiftConnection
 };
 
@@ -83,7 +83,7 @@ fn main() {
             let ga = sw.get_account();
             match ga.run_request() {
                 Ok(resp) => {
-                    for header in resp.headers.iter() {
+                    for header in resp.headers().iter() {
                         println!(
                             "{0:?}: {1:?}",
                             header.name(),
@@ -104,7 +104,7 @@ fn main() {
         let ha = swift.head_account();
         match ha.run_request() {
             Ok(resp) => {
-                for header in resp.headers.iter() {
+                for header in resp.headers().iter() {
                     println!(
                         "{0:?}: {1:?}",
                         header.name(),
