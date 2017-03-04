@@ -6,6 +6,7 @@ authors = ["Joel Wright <joel.wright@gmail.com>"]
 [dependencies]
 docopt = ">=0.6"
 hyper = ">=0.8.0"
+hyper-native-tls = ">=0.2"
 chrono = ">=0.2"
 rustc-serialize = ">=0.3.19"
 url = ">=0.2"

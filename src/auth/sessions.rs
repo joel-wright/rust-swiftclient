@@ -1,6 +1,8 @@
 // The JSON structure requires CamelCase keys
 #![allow(non_snake_case)]
 use hyper::Client;
+use hyper::net::HttpsConnector;
+use hyper_native_tls::NativeTlsClient;
 use hyper::header::{Headers, ContentType};
 use hyper::method::Method;
 use hyper::client::{IntoUrl, RequestBuilder};
@@ -141,7 +143,9 @@ unsafe impl Sync for KeystoneAuthV2 {}
 impl KeystoneAuthV2 {
     pub fn new (username: String, password: String, tenant: String,
                 auth_url: String, region: Option<String>) -> KeystoneAuthV2 {
-        let client = Client::new();
+        let ssl = NativeTlsClient::new().unwrap();
+        let connector = HttpsConnector::new(ssl);
+        let client = Client::with_connector(connector);
         let token = KeystoneAuthV2Token::new();
         KeystoneAuthV2 {
             username: username,
