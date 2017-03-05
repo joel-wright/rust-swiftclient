@@ -88,7 +88,6 @@ pub trait RunSwiftRequest {
 /*
  * Get Account
  */
-
 pub struct GetAccount<A> {
     marker: Option<String>,
     limit: u32,
@@ -145,7 +144,6 @@ impl<AS: Sized+Auth> RunSwiftRequest for GetAccount<AS> {
 /*
  * Head Account
  */
-
 pub struct HeadAccount<A> {
     headers: Headers,
     auth: Arc<A>
@@ -177,7 +175,6 @@ impl<AS: Sized+Auth> RunSwiftRequest for HeadAccount<AS> {
 /*
  * Post Account
  */
-
 pub struct PostAccount<A> {
     headers: Headers,
     auth: Arc<A>
@@ -209,7 +206,6 @@ impl<AS: Sized+Auth> RunSwiftRequest for PostAccount<AS> {
 /*
  * Get Container
  */
-
 pub struct GetContainer<A> {
     container: String,
     marker: Option<String>,
@@ -277,7 +273,6 @@ impl<AS: Sized+Auth> RunSwiftRequest for GetContainer<AS> {
 /*
  * Get Object
  */
-
 pub struct GetObject<A> {
     container: String,
     object: String,
@@ -320,7 +315,6 @@ impl<AS: Sized+Auth> RunSwiftRequest for GetObject<AS> {
 /*
  * Put Object
  */
-
 pub struct PutObject<A> {
     container: String,
     object: String,

@@ -160,10 +160,14 @@ impl KeystoneAuthV2 {
                 match self.region {
                     Some(ref r) => {
                         'eps: for endpoint in endpoints_array {
-                            let _r = if let Ok(x) = find_err(&endpoint, "region") {x}
-                                     else {continue 'eps};
-                            let _fr = if let Some(x) = as_string(&_r) {x}
-                                     else {continue 'eps};
+                            let _r = {
+                                if let Ok(x) = find_err(&endpoint, "region") {x}
+                                else {continue 'eps}
+                            };
+                            let _fr = {
+                                if let Some(x) = as_string(&_r) {x}
+                                else {continue 'eps}
+                            };
                             if &_fr == r {
                                 let _public_url = try!(find_err(&endpoint, "publicURL"));
                                 let storage_url = as_string(&_public_url);
