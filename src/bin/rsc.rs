@@ -7,6 +7,7 @@ extern crate rust_swiftclient;
 use docopt::Docopt;
 
 use std::env;
+use std::io;
 use std::process::exit;
 use std::thread;
 use std::sync::Arc;
@@ -75,9 +76,10 @@ fn main() {
     let region = get_optional_arg(args.flag_region, String::from("OS_REGION_NAME"));
 
     let ksauth = KeystoneAuthV2::new(user, pwd, tenant, url, region);
-    let swift: Arc<SwiftConnection<KeystoneAuthV2>> = Arc::new(SwiftConnection::new(ksauth));
+    let swift: Arc<SwiftConnection<KeystoneAuthV2>> =
+        Arc::new(SwiftConnection::new(ksauth));
 
-    let thread_action = {
+    let get_account_action = {
         let sw = swift.clone();
         let thread_action = thread::spawn(move || {
             let ga = sw.get_account();
@@ -93,32 +95,48 @@ fn main() {
                 },
                 Err(s) => {
                     println!("{}", s);
-                    return ()
                 }
             };
         });
         thread_action
     };
 
-    {
-        let ha = swift.head_account();
-        match ha.run_request() {
-            Ok(resp) => {
-                for header in resp.headers().iter() {
-                    println!(
-                        "{0:?}: {1:?}",
-                        header.name(),
-                        header.value_string()
-                    );
+    let get_object_action = {
+        let sw = swift.clone();
+        let thread_action = thread::spawn(move || {
+            let go = sw.get_object(
+                String::from("jjw"),
+                String::from("hello_world")
+            );
+            match go.run_request() {
+                Ok(mut resp) => {
+                    for header in resp.headers().iter() {
+                        println!(
+                            "object - {0:?}: {1:?}",
+                            header.name(),
+                            header.value_string()
+                        );
+                    };
+                    let mut body_vec: Vec<u8> = vec![];
+                    match io::copy(&mut resp, &mut body_vec) {
+                        Ok(bytes) => {
+                            let body = String::from_utf8(body_vec).unwrap();
+                            println!("{} (bytes: {})", body, bytes);
+                        },
+                        Err(e) => {
+                            println!("{}", e);
+                            ()
+                        }
+                    };
+                },
+                Err(s) => {
+                    println!("{}", s);
                 }
-            },
-            Err(s) => println!("{}", s)
-        };
-    }
+            };
+        });
+        thread_action
+    };
 
-    let result = thread_action.join();
-    match result {
-        Err(_) => println!("All went boom"),
-        _ => ()
-    }
+    get_account_action.join();
+    get_object_action.join();
 }

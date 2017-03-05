@@ -9,20 +9,18 @@ use reqwest::RequestBuilder;
 use rustc_serialize::{Encodable, json};
 use std::clone::Clone;
 use std::io::Read;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::result::Result;
 use std::sync::Mutex;
-use std::sync::mpsc::{channel, Receiver, Sender};
 
 use auth::errors::AuthError;
 
 /*
  * Trait to be implemented by any auth object
  */
-
 pub trait Auth {
-    fn build_request(&self, m: Method, path: String, mut headers: Headers)
+    fn build_request(&self, m: Method, path: String, headers: Headers)
         -> Result<RequestBuilder, AuthError>;
 }
 
@@ -30,14 +28,13 @@ pub trait Auth {
  * Helper methods for manipulating JSON objects
  */
 
-fn post_json<T>(client: &Client, url: &str, payload: &T, sender: Sender<String>)
+fn post_json<T>(client: &Client, url: &str, payload: &T)
         -> Result<String, AuthError> where T: Encodable {
     // POSTs an encodable payload to a given URL
     let body: String = match json::encode(payload) {
         Ok(s) => s,
         Err(e) => return Err(AuthError::JsonEncode(e))
     };
-    //let request = RequestAuthToken(body, sender);
     let mut headers = Headers::new();
     headers.set(ContentType::json());
     let post_res = client.post(url).body(&body[..]).headers(headers).send();
@@ -127,8 +124,6 @@ pub struct KeystoneAuthV2 {
     auth_url: String,
     region: Option<String>,
     client: Client,
-    sender: Sender<String>,
-    receiver: Receiver<String>,
     token: Mutex<KeystoneAuthV2Token>,
 }
 
@@ -140,7 +135,6 @@ impl KeystoneAuthV2 {
                 auth_url: String, region: Option<String>) -> KeystoneAuthV2 {
         let client = Client::new().unwrap();
         let token = KeystoneAuthV2Token::new();
-        let (tx, rx) = channel();
         KeystoneAuthV2 {
             username: username,
             password: password,
@@ -148,8 +142,6 @@ impl KeystoneAuthV2 {
             auth_url: auth_url,
             region: region,
             client: client,
-            sender: tx,
-            receiver: rx,
             token: Mutex::new(token)
         }
     }
@@ -201,7 +193,7 @@ impl KeystoneAuthV2 {
     /*
      * Authenticate using supplied parameters
      */
-    fn authenticate(&self) -> Result<(), AuthError> {
+    fn authenticate(&self, keystone_token: &mut KeystoneAuthV2Token) -> Result<(), AuthError> {
         debug!("Starting authentication");
         let auth = AuthRequestV2 {
             auth: AuthRequestAuthV2 {
@@ -213,8 +205,7 @@ impl KeystoneAuthV2 {
         }};
 
         let _au = &format!("{}/{}", &self.auth_url, "tokens")[..];
-        let sender = self.sender.clone();
-        let response = try!(post_json(&self.client, _au, &auth, sender));
+        let response = try!(post_json(&self.client, _au, &auth));
         let response_object: json::Json = match json::Json::from_str(&response) {
             Ok(j) => j,
             Err(e) => return Err(AuthError::JsonDecode(e))
@@ -247,7 +238,6 @@ impl KeystoneAuthV2 {
         };
         match storage_url {
             Some(_) => {
-                let mut keystone_token = self.token.lock().unwrap();
                 keystone_token.storage_url = storage_url;
                 keystone_token.token = as_string(&token_id);
                 match expires.as_string() {
@@ -280,29 +270,30 @@ impl KeystoneAuthV2 {
     unsafe fn get_token(&self) -> Result<(), AuthError> {
         {
             match self.token.try_lock() {
-                Ok(keystone_token) => {
-                    match keystone_token.expires {
-                        Some(datetime) => {
-                            let now = UTC::now();
-                            let d: DateTime<UTC> = datetime - Duration::hours(1);
-                            if now.lt(&d) {  // If the token expires more than an hour from now
-                                             // just return it.
-                                match keystone_token.token {
-                                    Some(_) => return Ok(()),
-                                    None => ()  // No token means we need to auth
-                                }
-                            }
+                Ok(mut keystone_token) => {
+                    match keystone_token.token {
+                        Some(_) => {
+                            match keystone_token.expires {
+                                Some(datetime) => {
+                                    let now = UTC::now();
+                                    let d: DateTime<UTC> = datetime - Duration::hours(1);
+                                    if now.lt(&d) {    // If the token expires more than
+                                        return Ok(())  // an hour from now, just return it
+                                    }
+                                },
+                                None => ()  // No expiry time means no token
+                            };
                         },
-                        None => ()  // No expiry time means no token
-                    }
+                        None => ()  // No token means we need to auth
+                    };
+                    // If we get here then we have a lock but no valid token, so auth
+                    return self.authenticate(keystone_token.deref_mut())
                 },
                 Err(_) => return Ok(())  // If we can't get the lock, just assume that
                                          // another thread is authenticating - build_request
                                          // will then lock until it's complete
             }
         };
-        // If we get here we need to try to authenticate again
-        return self.authenticate();
     }
 }
 

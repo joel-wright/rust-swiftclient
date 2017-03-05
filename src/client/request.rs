@@ -1,7 +1,5 @@
 use hyper::header::Headers;
 use hyper::method::Method;
-use hyper::net::Streaming;
-//use hyper::client::{request, response};
 use reqwest::{RequestBuilder, Response};
 
 use std::fmt::Display;
@@ -299,13 +297,14 @@ impl<AS: Sized+Auth> RunSwiftRequest for GetObject<AS> {
     fn run_request(&self)
         -> Result<Response, SwiftError>
     {
-        let mut path = format!("{}/{}", self.container, self.object);
+        let mut path = format!("/{}/{}", self.container, self.object);
         if self.multipart_manifest_get {
             path = path + &format!("?{}={}", &"multipart-manifest", &"get");
         };
 
         match build_request(
-                self.auth.as_ref(), Method::Get, path, self.headers.clone()) {
+                self.auth.as_ref(), Method::Get, path, self.headers.clone()
+        ) {
             Ok(req) => make_request(req),
             Err(e) => Err(e)
         }
@@ -345,6 +344,7 @@ impl<AS: Sized+Auth> RunSwiftRequest for PutObject<AS> {
             path = path + &format!("?{}={}", &"multipart-manifest", &"put");
         };
 
+        // TODO: Working here
         // let mut streaming_req: request::Request<Streaming> = match build_request(
         //         self.auth.as_ref(), Method::Put, path, self.headers.clone()) {
         //     Ok(req_b) => match req_b.start() {
