@@ -1,12 +1,12 @@
 use hyper::header::Headers;
 use hyper::method::Method;
-use reqwest::{RequestBuilder, Response};
+use reqwest::{Body, RequestBuilder, Response};
 
 use std::fmt::Display;
 use std::sync::Arc;
 use std::vec::Vec;
 
-use auth::errors::AuthError;
+//use auth::errors::AuthError;
 use auth::sessions::Auth;
 use client::errors::SwiftError;
 
@@ -54,15 +54,15 @@ impl<AS: Sized+Auth> SwiftConnection<AS> {
         GetObject::new(self.auth.clone(), container, object)
     }
 
-    pub fn put_object(
-        &self, container: String, object:String
-    ) -> PutObject<AS> {
-        PutObject::new(self.auth.clone(), container, object)
+    pub fn put_object<T: Into<Body>>(
+        &self, container: String, object: String, body: T
+    ) -> PutObject<AS, T> {
+        PutObject::new(self.auth.clone(), container, object, body)
     }
 }
 
 pub trait RunSwiftRequest {
-    fn run_request(&self)
+    fn run_request(self)
         -> Result<Response, SwiftError>;
 
     fn add_query_param<K: Display, V: Display>(
@@ -111,7 +111,7 @@ impl<AS: Sized+Auth> GetAccount<AS> {
 }
 
 impl<AS: Sized+Auth> RunSwiftRequest for GetAccount<AS> {
-    fn run_request(&self)
+    fn run_request(self)
             -> Result<Response, SwiftError> {
         let mut query_params = Vec::new();
         self.add_query_param(&"limit", &self.limit, &mut query_params);
@@ -157,7 +157,7 @@ impl<AS: Sized+Auth> HeadAccount<AS> {
 }
 
 impl<AS: Sized+Auth> RunSwiftRequest for HeadAccount<AS> {
-    fn run_request(&self)
+    fn run_request(self)
             -> Result<Response, SwiftError> {
         let path = "".to_string();
         match build_request(
@@ -188,7 +188,7 @@ impl<AS: Sized+Auth> PostAccount<AS> {
 }
 
 impl<AS: Sized+Auth> RunSwiftRequest for PostAccount<AS> {
-    fn run_request(&self)
+    fn run_request(self)
             -> Result<Response, SwiftError> {
         let path = "".to_string();
         match build_request(
@@ -235,7 +235,7 @@ impl<AS: Sized+Auth> GetContainer<AS> {
 }
 
 impl<AS: Sized+Auth> RunSwiftRequest for GetContainer<AS> {
-    fn run_request(&self)
+    fn run_request(self)
             -> Result<Response, SwiftError> {
         let mut query_params = Vec::new();
         self.add_query_param(&"limit", &self.limit, &mut query_params);
@@ -294,7 +294,7 @@ impl<AS: Sized+Auth> GetObject<AS> {
 }
 
 impl<AS: Sized+Auth> RunSwiftRequest for GetObject<AS> {
-    fn run_request(&self)
+    fn run_request(self)
         -> Result<Response, SwiftError>
     {
         let mut path = format!("/{}/{}", self.container, self.object);
@@ -314,47 +314,47 @@ impl<AS: Sized+Auth> RunSwiftRequest for GetObject<AS> {
 /*
  * Put Object
  */
-pub struct PutObject<A> {
+pub struct PutObject<A, T: Into<Body>> {
     container: String,
     object: String,
     multipart_manifest_put: bool,
     headers: Headers,
+    body: T,
     auth: Arc<A>
 }
 
-impl<AS: Sized+Auth> PutObject<AS> {
+impl<AS: Sized+Auth, T: Into<Body>> PutObject<AS, T> {
     pub fn new(
-        auth: Arc<AS>, container: String, object: String
-    ) -> PutObject<AS> {
+        auth: Arc<AS>, container: String, object: String, body: T
+    ) -> PutObject<AS, T> {
         PutObject {
             container: container,
             object: object,
             multipart_manifest_put: false,
             headers: Headers::new(),
+            body: body,
             auth: auth
         }
     }
 }
 
-impl<AS: Sized+Auth> RunSwiftRequest for PutObject<AS> {
-    fn run_request(&self)
+impl<AS: Sized+Auth, T: Into<Body>> RunSwiftRequest for PutObject<AS, T> {
+    fn run_request(self)
             -> Result<Response, SwiftError> {
         let mut path = format!("{}/{}", self.container, self.object);
         if self.multipart_manifest_put {
             path = path + &format!("?{}={}", &"multipart-manifest", &"put");
         };
 
-        // TODO: Working here
-        // let mut streaming_req: request::Request<Streaming> = match build_request(
-        //         self.auth.as_ref(), Method::Put, path, self.headers.clone()) {
-        //     Ok(req_b) => match req_b.start() {
-        //         Ok(req) => req,
-        //         Err(e) => return Err(SwiftError::Http(e))
-        //     },
-        //     Err(e) => return Err(e)
-        // };
+        let put_req = match build_request(
+            self.auth.as_ref(), Method::Put, path, self.headers.clone()
+        ) {
+            Ok(req) => req,
+            Err(e) => return Err(e)
+        };
+        let put_req = put_req.body(self.body);
 
-        Err(SwiftError::Auth(AuthError::Fail(String::new())))
+        make_request(put_req)
     }
 }
 

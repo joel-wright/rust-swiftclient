@@ -9,7 +9,6 @@ use reqwest::RequestBuilder;
 use rustc_serialize::{Encodable, json};
 use std::clone::Clone;
 use std::io::Read;
-use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::result::Result;
 use std::sync::Mutex;
@@ -287,7 +286,7 @@ impl KeystoneAuthV2 {
                         None => ()  // No token means we need to auth
                     };
                     // If we get here then we have a lock but no valid token, so auth
-                    return self.authenticate(keystone_token.deref_mut())
+                    return self.authenticate(&mut keystone_token)
                 },
                 Err(_) => return Ok(())  // If we can't get the lock, just assume that
                                          // another thread is authenticating - build_request
@@ -315,7 +314,7 @@ impl Auth for KeystoneAuthV2 {
         // Either the current thread got the token and it's ready, or
         // another thread is getting the token and we have to wait
         let keystone_token: KeystoneAuthV2Token = match self.token.lock() {
-            Ok(t) => t.deref().clone(),
+            Ok(t) => t.clone(),
             Err(_) => {
                 error!("Failed to grab the current access token");
                 let err_msg = String::from("Locking token failed");
