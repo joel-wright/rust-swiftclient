@@ -7,7 +7,6 @@ extern crate rust_swiftclient;
 use docopt::Docopt;
 
 use std::env;
-use std::io;
 use std::process::exit;
 use std::thread;
 use std::sync::Arc;
@@ -79,7 +78,8 @@ fn main() {
     let swift: Arc<SwiftConnection<KeystoneAuthV2>> =
         Arc::new(SwiftConnection::new(ksauth));
 
-    let get_account_action = {
+    // For now, just do **something** in a separate thread and produce output
+    let _ = {
         let sw = swift.clone();
         let thread_action = thread::spawn(move || {
             let ga = sw.get_account();
@@ -87,56 +87,15 @@ fn main() {
                 Ok(resp) => {
                     for header in resp.headers().iter() {
                         println!(
-                            "{0:?}: {1:?}",
+                            "HA: {0:?}: {1:?}",
                             header.name(),
                             header.value_string()
                         );
                     }
                 },
-                Err(s) => {
-                    println!("{}", s);
-                }
+                Err(s) => println!("{}", s)
             };
         });
         thread_action
-    };
-
-    let get_object_action = {
-        let sw = swift.clone();
-        let thread_action = thread::spawn(move || {
-            let go = sw.get_object(
-                String::from("jjw"),
-                String::from("hello_world")
-            );
-            match go.run_request() {
-                Ok(mut resp) => {
-                    for header in resp.headers().iter() {
-                        println!(
-                            "object - {0:?}: {1:?}",
-                            header.name(),
-                            header.value_string()
-                        );
-                    };
-                    let mut body_vec: Vec<u8> = vec![];
-                    match io::copy(&mut resp, &mut body_vec) {
-                        Ok(bytes) => {
-                            let body = String::from_utf8(body_vec).unwrap();
-                            println!("{} (bytes: {})", body, bytes);
-                        },
-                        Err(e) => {
-                            println!("{}", e);
-                            ()
-                        }
-                    };
-                },
-                Err(s) => {
-                    println!("{}", s);
-                }
-            };
-        });
-        thread_action
-    };
-
-    get_account_action.join();
-    get_object_action.join();
+    }.join();
 }

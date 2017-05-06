@@ -256,7 +256,7 @@ impl<AS: Sized+Auth> RunSwiftRequest for GetContainer<AS> {
                 &"format", &"xml", &mut query_params),
             Format::Plain => ()
         };
-        let mut path = format!("{}?", self.container);
+        let mut path = format!("/{}?", self.container);
         path = path + &query_params.join("&").to_string();
 
         match build_request(
